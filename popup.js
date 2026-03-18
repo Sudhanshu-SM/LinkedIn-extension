@@ -63,12 +63,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     action: "save_to_sheet",
                     sheetId: currentSheetId,
                     data: response.data,
-                    mode: "quick"
+                    mode: "quick",
+                    zohoSave: saveZohoCb.checked,
+                    zohoJobId: zohoJobSelect.value
                 }, function (saveResp) {
                     if (saveResp && saveResp.success) {
                         setStatus('✅ Quick Add successful!\n' + response.data.full_name + ' saved to sheet.', 'success');
                     } else {
-                        setStatus('❌ Failed to save: ' + (saveResp ? saveResp.error : 'Unknown error'), 'error');
+                        const errMsg = saveResp ? saveResp.error : 'Unknown error';
+                        setStatus('❌ Failed to save: ' + errMsg, 'error');
+                        alert("API Error:\n" + errMsg);
                     }
                     enableButtons();
                 });
@@ -94,12 +98,16 @@ document.addEventListener('DOMContentLoaded', function () {
         chrome.runtime.sendMessage({
             action: "full_scrape_orchestrate",
             tabId: linkedinTabId,
-            sheetId: currentSheetId
+            sheetId: currentSheetId,
+            zohoSave: saveZohoCb.checked,
+            zohoJobId: zohoJobSelect.value
         }, function (response) {
             if (response && response.success) {
                 setStatus('✅ Full scrape complete!\n' + response.data.full_name + ' — all details saved.', 'success');
             } else {
-                setStatus('❌ Scrape failed: ' + (response ? response.error : 'Unknown error'), 'error');
+                const errMsg = response ? response.error : 'Unknown error';
+                setStatus('❌ Scrape failed: ' + errMsg, 'error');
+                alert("API Error:\n" + errMsg);
             }
             enableButtons();
         });
@@ -111,6 +119,50 @@ document.addEventListener('DOMContentLoaded', function () {
             setStatus(request.message, 'working');
         }
     });
+
+    // --- ZOHO RECRUIT INTEGRATION ---
+    const saveZohoCb = document.getElementById('save-zoho-cb');
+    const zohoJobSelect = document.getElementById('zoho-job-select');
+    const openOptionsLink = document.getElementById('open-options');
+
+    openOptionsLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (chrome.runtime.openOptionsPage) {
+            chrome.runtime.openOptionsPage();
+        } else {
+            window.open(chrome.runtime.getURL('options.html'));
+        }
+    });
+
+    function loadZohoJobs() {
+        chrome.storage.local.get(['zohoRefreshToken', 'zohoClientId'], (result) => {
+            if (!result.zohoRefreshToken || !result.zohoClientId) {
+                zohoJobSelect.innerHTML = '<option value="">(Zoho APIs not configured)</option>';
+                saveZohoCb.checked = false;
+                saveZohoCb.disabled = true;
+                return;
+            }
+
+            zohoJobSelect.innerHTML = '<option value="">Loading active jobs...</option>';
+            chrome.runtime.sendMessage({ action: "get_zoho_jobs" }, function(response) {
+                if (response && response.success && response.jobs) {
+                    zohoJobSelect.innerHTML = '<option value="">(No Job Selected)</option>';
+                    response.jobs.forEach(job => {
+                        const opt = document.createElement('option');
+                        opt.value = job.id;
+                        opt.textContent = job.title;
+                        zohoJobSelect.appendChild(opt);
+                    });
+                } else {
+                    const errorMsg = (response && response.error) ? response.error : "Failed to load jobs";
+                    zohoJobSelect.innerHTML = `<option value="">(Error: ${errorMsg})</option>`;
+                }
+            });
+        });
+    }
+
+    // Call this to load jobs on popup initialization
+    loadZohoJobs();
 
     // --- HELPERS ---
     function checkAuth() {
@@ -172,10 +224,16 @@ document.addEventListener('DOMContentLoaded', function () {
     function disableButtons() {
         quickBtn.disabled = true;
         fullBtn.disabled = true;
+        saveZohoCb.disabled = true;
+        zohoJobSelect.disabled = true;
     }
 
     function enableButtons() {
         checkReady();
+        chrome.storage.local.get(['zohoRefreshToken'], (res) => {
+            saveZohoCb.disabled = !res.zohoRefreshToken;
+        });
+        zohoJobSelect.disabled = false;
     }
 
     function setStatus(msg, type) {

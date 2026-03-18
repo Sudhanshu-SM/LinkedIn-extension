@@ -7,8 +7,13 @@
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://www.googleapis.com/*",
-    "https://docs.google.com/*"
+    "https://docs.google.com/*",
+    "https://*.zoho.com/*",
+    "https://*.zoho.in/*",
+    "https://*.zoho.eu/*",
+    "https://*.zoho.com.au/*"
   ],
+  "options_page": "options.html",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

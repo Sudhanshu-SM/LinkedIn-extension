@@ -181,6 +181,81 @@
         margin: 14px 0;
       }
 
+      /* Zoho Info */
+      .zoho-info {
+        background: linear-gradient(
+          135deg,
+          rgba(245, 158, 11, 0.08) 0%,
+          rgba(245, 158, 11, 0.03) 100%
+        );
+        border: 1px solid rgba(245, 158, 11, 0.15);
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .zoho-toggle {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+      }
+
+      .zoho-label-text {
+        margin-left: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fcd34d;
+      }
+
+      #zoho-job-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      #zoho-job-select {
+        width: 100%;
+        padding: 6px 8px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-radius: 6px;
+        color: #fef3c7;
+        font-family: inherit;
+        font-size: 12px;
+        outline: none;
+      }
+
+      #zoho-job-select:focus {
+        border-color: #f59e0b;
+      }
+
+      .zoho-settings-link {
+        align-self: flex-end;
+      }
+
+      .zoho-settings-link a {
+        color: #fbbf24;
+        text-decoration: none;
+        font-size: 11px;
+      }
+      
+      .zoho-settings-link a:hover {
+        text-decoration: underline;
+      }
+      .divider {
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.08),
+          transparent
+        );
+        margin: 14px 0;
+      }
+
       /* Action Buttons */
       .actions {
         display: flex;
@@ -363,6 +438,22 @@
       <div id="profile-status" class="profile-info">
         <span>👤</span>
         <span id="profile-text">Detecting profile...</span>
+      </div>
+
+      <!-- Zoho Section -->
+      <div id="zoho-section" class="zoho-info">
+        <label class="zoho-toggle">
+          <input type="checkbox" id="save-zoho-cb" checked />
+          <span class="zoho-label-text">Save to Zoho Recruit</span>
+        </label>
+        <div id="zoho-job-container">
+          <select id="zoho-job-select">
+            <option value="">Loading jobs...</option>
+          </select>
+          <div class="zoho-settings-link">
+            <a href="#" id="open-options">⚙️ Settings</a>
+          </div>
+        </div>
       </div>
 
       <div class="divider"></div>

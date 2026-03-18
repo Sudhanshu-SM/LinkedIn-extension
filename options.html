@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+  <head>
+    <title>LinkedIn Scraper Options</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        padding: 20px;
+        background-color: #f3f4f6;
+        color: #1f2937;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .card {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+      h2 {
+        margin-top: 0;
+        color: #111827;
+        font-size: 1.25rem;
+      }
+      .form-group {
+        margin-bottom: 16px;
+      }
+      label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 6px;
+        font-size: 0.875rem;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+      }
+      input[type="text"]:focus,
+      input[type="password"]:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+      button {
+        background-color: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      button:hover {
+        background-color: #1d4ed8;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 0.875rem;
+        color: #059669;
+        display: none;
+      }
+      .note {
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Zoho Recruit API Settings</h2>
+      <p
+        class="note"
+        style="margin-top: -10px; margin-bottom: 20px; font-size: 0.85rem"
+      >
+        Generate these from the
+        <a href="https://api-console.zoho.com/" target="_blank"
+          >Zoho API Console</a
+        >. Create a "Self Client", use scopes:
+        <code
+          >ZohoRecruit.modules.candidates.CREATE,
+          ZohoRecruit.modules.jobopenings.READ,
+          ZohoRecruit.modules.candidates.UPDATE</code
+        >
+        (or simply <code>ZohoRecruit.modules.ALL</code>) to generate the Refresh
+        Token.
+      </p>
+
+      <div class="form-group">
+        <label for="clientId">Client ID</label>
+        <input
+          type="text"
+          id="clientId"
+          placeholder="1000.XXXXXXXXXXXXXXXXXXXXXXXXX"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="clientSecret">Client Secret</label>
+        <input
+          type="password"
+          id="clientSecret"
+          placeholder="••••••••••••••••••••••••••••"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="refreshToken">Refresh Token</label>
+        <input
+          type="password"
+          id="refreshToken"
+          placeholder="1000.xxxxxxx.xxxxxxx"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="domain">Data Center Domain</label>
+        <input
+          type="text"
+          id="domain"
+          placeholder="https://accounts.zoho.in or https://accounts.zoho.com"
+          value="https://accounts.zoho.in"
+        />
+        <p class="note">
+          Usually accounts.zoho.com, accounts.zoho.in, accounts.zoho.eu etc.
+          depending on your region.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="apiDomain">API Domain</label>
+        <input
+          type="text"
+          id="apiDomain"
+          placeholder="https://recruit.zoho.in or https://recruit.zoho.com"
+          value="https://recruit.zoho.in"
+        />
+        <p class="note">
+          Usually recruit.zoho.com, recruit.zoho.in, recruit.zoho.eu etc.
+        </p>
+      </div>
+
+      <button id="saveBtn">Save Settings</button>
+      <div id="statusMsg" class="status">Settings saved successfully!</div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

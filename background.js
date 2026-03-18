@@ -13,14 +13,20 @@ const HEADERS = [
 // --- Message Listener ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "save_to_sheet") {
-        handleSaveToSheet(request.sheetId, request.data, request.mode)
+        handleSaveToSheet(request.sheetId, request.data, request.mode, request.zohoSave, request.zohoJobId)
             .then(result => sendResponse(result))
             .catch(e => sendResponse({ success: false, error: e.message }));
         return true; // async
     }
     else if (request.action === "full_scrape_orchestrate") {
-        orchestrateFullScrape(request.tabId, request.sheetId)
+        orchestrateFullScrape(request.tabId, request.sheetId, request.zohoSave, request.zohoJobId)
             .then(result => sendResponse(result))
+            .catch(e => sendResponse({ success: false, error: e.message }));
+        return true; // async
+    }
+    else if (request.action === "get_zoho_jobs") {
+        getZohoJobs()
+            .then(jobs => sendResponse({ success: true, jobs: jobs }))
             .catch(e => sendResponse({ success: false, error: e.message }));
         return true; // async
     }
@@ -32,10 +38,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // =====================================================
-// SAVE TO SHEET
+// MAIN SAVE HANDLER
 // =====================================================
 
-async function handleSaveToSheet(sheetId, data, mode) {
+async function handleSaveToSheet(sheetId, data, mode, zohoSave, zohoJobId) {
     const token = await getAuthToken();
 
     // Ensure headers exist
@@ -45,6 +51,17 @@ async function handleSaveToSheet(sheetId, data, mode) {
     const row = HEADERS.map(key => data[key] || "");
 
     await appendToSheet(row, sheetId, token);
+    
+    // Save to Zoho if requested
+    if (zohoSave) {
+        broadcastStatus("🔄 Saving candidate to Zoho...");
+        const candidateId = await createZohoCandidate(data);
+        if (zohoJobId) {
+            broadcastStatus("🔗 Associating with Job Opening...");
+            await associateZohoCandidate(candidateId, zohoJobId);
+        }
+    }
+    
     return { success: true };
 }
 
@@ -52,7 +69,7 @@ async function handleSaveToSheet(sheetId, data, mode) {
 // ORCHESTRATE FULL SCRAPE (Background-driven)
 // =====================================================
 
-async function orchestrateFullScrape(tabId, sheetId) {
+async function orchestrateFullScrape(tabId, sheetId, zohoSave, zohoJobId) {
     try {
         // Phase 1: Scrape main profile
         broadcastStatus("📄 Reading main profile page...");
@@ -108,7 +125,8 @@ async function orchestrateFullScrape(tabId, sheetId) {
             profile_url: profileUrl,
             education: educationItems.join(" ; ") || "N/A",
             top_skills: skillsItems.slice(0, 3).join(", ") || "N/A",
-            all_experience: allExperience || "N/A"
+            all_experience: allExperience || "N/A",
+            raw_experience_items: experienceItems
         };
 
         // Save to sheet
@@ -116,6 +134,16 @@ async function orchestrateFullScrape(tabId, sheetId) {
         await checkAndAddHeaders(sheetId, token);
         const row = HEADERS.map(key => finalData[key] || "");
         await appendToSheet(row, sheetId, token);
+
+        // Save to Zoho if requested
+        if (zohoSave) {
+            broadcastStatus("🔄 Saving candidate to Zoho...");
+            const candidateId = await createZohoCandidate(finalData);
+            if (zohoJobId) {
+                broadcastStatus("🔗 Associating with Job Opening...");
+                await associateZohoCandidate(candidateId, zohoJobId);
+            }
+        }
 
         broadcastStatus("✅ Full scrape complete! " + finalData.full_name + " saved.");
         return { success: true, data: finalData };
@@ -236,18 +264,29 @@ function parseExperience(experienceItems) {
 
     function classifyParts(parts) {
         let title = null, company = null, loc = null, dur = null, dateRange = null;
+
+        const remaining = [];
         for (const part of parts) {
             const p = part.trim();
-            if (!p) continue;
-            if (!dur && isDuration(p) && !isDateRange(p)) { dur = p; continue; }
-            if (!dateRange && isDateRange(p)) { dateRange = p; continue; }
-            if (!loc && isLocation(p)) { loc = p; continue; }
-            // Employment type keywords — skip
             if (/^(Full-time|Part-time|Internship|Contract|Freelance|Self-employed|Seasonal|Apprenticeship)$/i.test(p)) continue;
-            // First non-classified = title, second = company
-            if (!title) { title = p; continue; }
-            if (!company) { company = p; continue; }
+            
+            if (!dateRange && isDateRange(p)) { dateRange = p; }
+            else if (!dur && isDuration(p) && !isDateRange(p)) { dur = p; }
+            else { remaining.push(p); }
         }
+
+        if (remaining.length === 1) {
+            title = remaining[0];
+        } else if (remaining.length === 2) {
+            title = remaining[0];
+            if (isLocation(remaining[1])) loc = remaining[1];
+            else company = remaining[1];
+        } else if (remaining.length >= 3) {
+            title = remaining[0];
+            company = remaining[1];
+            loc = remaining.slice(2).join(", ");
+        }
+
         return { title, company, location: loc, duration: dur, dateRange };
     }
 
@@ -461,4 +500,172 @@ function broadcastStatus(message) {
     try {
         chrome.runtime.sendMessage({ action: "scrape_status", message: message });
     } catch (e) { }
+}
+
+// =====================================================
+// ZOHO RECRUIT API
+// =====================================================
+
+async function getZohoCreds() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['zohoClientId', 'zohoClientSecret', 'zohoRefreshToken', 'zohoDomain', 'zohoApiDomain'], res => {
+            resolve(res);
+        });
+    });
+}
+
+async function refreshZohoToken() {
+    const creds = await getZohoCreds();
+    if (!creds.zohoClientId || !creds.zohoRefreshToken) {
+        throw new Error("Zoho Recruit credentials not configured.");
+    }
+
+    const domain = creds.zohoDomain || 'https://accounts.zoho.in';
+    const url = `${domain}/oauth/v2/token?refresh_token=${creds.zohoRefreshToken}&client_id=${creds.zohoClientId}&client_secret=${creds.zohoClientSecret}&grant_type=refresh_token`;
+
+    const response = await fetch(url, { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.error) throw new Error("Zoho Auth Error: " + data.error);
+    return data.access_token;
+}
+
+async function getZohoJobs() {
+    const token = await refreshZohoToken();
+    const creds = await getZohoCreds();
+    const apiDomain = creds.zohoApiDomain || 'https://recruit.zoho.in';
+    const url = `${apiDomain}/recruit/v2/Job_Openings?fields=id,Job_Opening_Name&sort_by=Created_Time&sort_order=desc`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Zoho-oauthtoken ${token}`
+        }
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch jobs");
+    const data = await response.json();
+    
+    if (!data.data) return [];
+    
+    return data.data.map(job => ({
+        id: job.id,
+        title: job.Job_Opening_Name
+    }));
+}
+
+async function createZohoCandidate(candidateData) {
+    const token = await refreshZohoToken();
+    const creds = await getZohoCreds();
+    const apiDomain = creds.zohoApiDomain || 'https://recruit.zoho.in';
+    
+    // Split name
+    const nameParts = (candidateData.full_name || "Unknown").trim().split(" ");
+    const lastName = nameParts.length > 1 ? nameParts.pop() : "Unknown";
+    const firstName = nameParts.join(" ");
+
+    const record = {
+        "First_Name": firstName || "Unknown",
+        "Last_Name": lastName || "Unknown",
+        "Current_Job_Title": candidateData.current_position || candidateData.headline || "",
+        "Current_Employer": candidateData.current_company || "",
+        "Skill_Set": candidateData.top_skills || "",
+        "Linkedin": candidateData.profile_url || "",
+        "Website": candidateData.profile_url || "",
+        "City": candidateData.location || ""
+    };
+
+    // Add structured Experience_Details
+    if (candidateData.raw_experience_items && candidateData.raw_experience_items.length > 0) {
+        const expDetails = [];
+        let currentGroup = "";
+        for (const item of candidateData.raw_experience_items) {
+            const parts = item.split(" | ").map(p => p.trim());
+            if (parts.length === 0) continue;
+            
+            // Check if grouped header
+            if (parts.length >= 2 && !parts[0].includes("·") && parts[1].match(/\d+\s*(?:yr|year|mo|month)s?/i)) {
+                currentGroup = parts[0];
+                continue; // Skip the group header row itself
+            }
+            
+            let title = parts[0];
+            let company = parts.length > 1 ? parts[1] : (currentGroup || "");
+            let dates = parts.length > 2 ? parts[2] : "";
+
+            // If it's a sub-role, the second part is usually dates, not company
+            if (currentGroup && (parts.length > 1 && (parts[1].match(/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i) || parts[1].match(/mos?|yrs?/i)))) {
+                dates = parts[1];
+                company = currentGroup;
+            } else if (!currentGroup && parts.length > 1) {
+                company = parts[1];
+            } else if (currentGroup && parts.length === 1) {
+                company = currentGroup;
+            } else if (!currentGroup && parts.length === 1) {
+                // Reset group context if format doesn't match
+                currentGroup = ""; 
+            }
+
+            expDetails.push({
+                "Occupation_Title": title || "Unknown",
+                "Company": company || "Unknown",
+                "Summary": dates ? `[${dates}]\n${item}` : item
+            });
+        }
+        
+        if (expDetails.length > 0) {
+            record["Experience_Details"] = expDetails;
+        }
+    }
+
+    const url = `${apiDomain}/recruit/v2/Candidates`;
+    const body = { data: [record] };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Zoho-oauthtoken ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+    if (data.data && data.data[0] && data.data[0].code === "SUCCESS") {
+        return data.data[0].details.id;
+    } else {
+        throw new Error("Zoho create candidate failed: " + JSON.stringify(data));
+    }
+}
+
+async function associateZohoCandidate(candidateId, jobOpeningId) {
+    const token = await refreshZohoToken();
+    const creds = await getZohoCreds();
+    const apiDomain = creds.zohoApiDomain || 'https://recruit.zoho.in';
+    
+    const url = `${apiDomain}/recruit/v2/Candidates/actions/associate`;
+
+    const body = {
+        "data": [
+            {
+                "jobids": [jobOpeningId],
+                "ids": [candidateId]
+            }
+        ]
+    };
+
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+            'Authorization': `Zoho-oauthtoken ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+    if (data.data && data.data[0] && data.data[0].code === "SUCCESS") {
+        return true;
+    } else {
+        throw new Error("Zoho associate failed: " + JSON.stringify(data));
+    }
 }

@@ -147,17 +147,21 @@ function getLocation() {
         return true;
     }
 
-    // Strategy 1: Look in the top card section for location-specific elements
-    const topSection = document.querySelector('.mt2.relative') ||
-        document.querySelector('.pv-text-details__left-panel') ||
-        document.querySelector('.ph5');
+    // Strategy 1: Highly specific LinkedIn selector for location
+    const specificLoc = document.querySelector('.mt2 span.text-body-small.inline.t-black--light.break-words') ||
+                        document.querySelector('.pv-text-details__left-panel span.text-body-small.inline.t-black--light.break-words');
+    if (specificLoc && isValidLocation(specificLoc.textContent.trim())) {
+        return specificLoc.textContent.trim();
+    }
 
-    if (topSection) {
-        // LinkedIn typically puts location in a specific span within the top section
-        const spans = topSection.querySelectorAll('span.text-body-small');
+    // Strategy 2: Look in the top left card section (avoiding right side company panels)
+    const leftPanel = document.querySelector('.mt2.relative') || document.querySelector('.pv-text-details__left-panel');
+    if (leftPanel) {
+        const spans = leftPanel.querySelectorAll('span.text-body-small');
         for (const span of spans) {
             const text = span.textContent.trim();
-            if (isValidLocation(text)) return text;
+            // Also avoid company names by checking if the span has a button parent
+            if (isValidLocation(text) && !span.closest('button')) return text;
         }
     }
 
