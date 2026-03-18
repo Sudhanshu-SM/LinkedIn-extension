@@ -497,9 +497,7 @@ function randomDelay(min, max) {
 }
 
 function broadcastStatus(message) {
-    try {
-        chrome.runtime.sendMessage({ action: "scrape_status", message: message });
-    } catch (e) { }
+    chrome.runtime.sendMessage({ action: "scrape_status", message: message }).catch(() => {});
 }
 
 // =====================================================
