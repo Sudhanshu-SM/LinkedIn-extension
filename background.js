@@ -657,8 +657,12 @@ async function associateZohoCandidate(candidateId, jobOpeningId) {
     const url = `${apiDomain}/recruit/v2/Candidates/actions/associate`;
 
     const body = {
-        "ids": [candidateId],
-        "jobids": [jobOpeningId]
+        "data": [
+            {
+                "ids": [candidateId],
+                "jobids": [jobOpeningId]
+            }
+        ]
     };
 
     const response = await fetch(url, {
