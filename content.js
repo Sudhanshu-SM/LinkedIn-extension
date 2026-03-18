@@ -42,12 +42,12 @@
             return true; // async
         }
         else if (request.action === "scrape_profile_sections") {
-            try {
-                const data = scrapeProfileSections();
+            scrapeProfileSections().then(data => {
                 sendResponse({ success: true, data: data });
-            } catch (e) {
+            }).catch(e => {
                 sendResponse({ success: false, error: e.message, data: {} });
-            }
+            });
+            return true; // async
         }
         return true;
     });
@@ -93,8 +93,12 @@
     // SCRAPE SECTIONS FROM MAIN PROFILE PAGE (fallback)
     // Used when /details/ pages are blank for some profiles
     // =====================================================
-    function scrapeProfileSections() {
+    async function scrapeProfileSections() {
         const result = { experience: [], education: [], skills: [] };
+
+        // Scroll the full page first to trigger LinkedIn's lazy loading
+        await gentleScroll();
+        await delay(1500);
 
         const sectionAnchors = {
             experience: ['#experience', '#experience-section'],
@@ -106,6 +110,10 @@
             for (const sel of anchors) {
                 const anchor = document.querySelector(sel);
                 if (!anchor) continue;
+
+                // Scroll to the section to ensure its items are rendered
+                anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await delay(1000);
 
                 // Walk up to find the containing section card
                 const section = anchor.closest('section') ||
