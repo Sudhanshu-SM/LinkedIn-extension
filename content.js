@@ -96,44 +96,65 @@
     async function scrapeProfileSections() {
         const result = { experience: [], education: [], skills: [] };
 
-        // Scroll the full page first to trigger LinkedIn's lazy loading
+        // Scroll full page to trigger lazy loading of all sections
         await gentleScroll();
-        await delay(1500);
+        await delay(2000);
 
-        const sectionAnchors = {
-            experience: ['#experience', '#experience-section'],
-            education:  ['#education',  '#education-section'],
-            skills:     ['#skills',     '#skills-section']
+        const mainContent = document.querySelector('main') ||
+                            document.querySelector('.scaffold-layout__main') ||
+                            document.body;
+
+        const sectionDefs = {
+            experience: { anchors: ['#experience', '#experience-section'], keyword: 'experience' },
+            education:  { anchors: ['#education',  '#education-section'],  keyword: 'education'  },
+            skills:     { anchors: ['#skills',     '#skills-section'],     keyword: 'skills'     }
         };
 
-        for (const [key, anchors] of Object.entries(sectionAnchors)) {
-            for (const sel of anchors) {
+        for (const [key, def] of Object.entries(sectionDefs)) {
+            let section = null;
+
+            // Strategy 1: walk up from the anchor element in multiple ways
+            for (const sel of def.anchors) {
                 const anchor = document.querySelector(sel);
                 if (!anchor) continue;
-
-                // Scroll to the section to ensure its items are rendered
-                anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                await delay(1000);
-
-                // Walk up to find the containing section card
-                const section = anchor.closest('section') ||
-                                anchor.parentElement?.parentElement?.parentElement;
-                if (!section) continue;
-
-                const items = section.querySelectorAll('.pvs-list__paged-list-item');
-                for (const item of items) {
-                    try {
-                        if (/·\s*(?:1st|2nd|3rd)|degree connection/i.test(item.textContent)) continue;
-                        const text = extractItemText(item);
-                        if (text) result[key].push(text);
-                    } catch (e) { continue; }
-                }
-
-                if (result[key].length > 0) break; // found data, stop trying anchors
+                section = anchor.closest('section') ||
+                          anchor.parentElement?.closest('section') ||
+                          anchor.parentElement?.parentElement?.closest('section') ||
+                          anchor.parentElement?.parentElement?.parentElement;
+                if (section) break;
             }
+
+            // Strategy 2: find by heading text inside any <section> on the page
+            if (!section || section.querySelectorAll('.pvs-list__paged-list-item').length === 0) {
+                const allSections = mainContent.querySelectorAll('section');
+                for (const sec of allSections) {
+                    const heading = sec.querySelector('h2, h3');
+                    if (heading && heading.textContent.toLowerCase().includes(def.keyword)) {
+                        section = sec;
+                        break;
+                    }
+                }
+            }
+
+            if (!section) continue;
+
+            // Scroll into view and wait for items to render
+            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await delay(1500);
+
+            const items = section.querySelectorAll('.pvs-list__paged-list-item');
+            for (const item of items) {
+                try {
+                    if (/·\s*(?:1st|2nd|3rd)|degree connection/i.test(item.textContent)) continue;
+                    const text = extractItemText(item);
+                    if (text) result[key].push(text);
+                } catch (e) { continue; }
+            }
+
+            log(`  ${key}: found ${result[key].length} items`);
         }
 
-        log(`Profile sections fallback: exp=${result.experience.length} edu=${result.education.length} skills=${result.skills.length}`);
+        log(`Profile sections fallback total: exp=${result.experience.length} edu=${result.education.length} skills=${result.skills.length}`);
         return result;
     }
 
