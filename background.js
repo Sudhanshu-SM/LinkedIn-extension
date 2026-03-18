@@ -618,9 +618,9 @@ async function createZohoCandidate(candidateData) {
             }
 
             expDetails.push({
-                "Occupation_Title": title || "Unknown",
-                "Company": company || "Unknown",
-                "Summary": dates ? `[${dates}]\n${item}` : item
+                "Occupation_Title": (title || "Unknown").substring(0, 255),
+                "Company": (company || "Unknown").substring(0, 255),
+                "Summary": (dates ? `[${dates}]\n${item}` : item).substring(0, 32000)
             });
         }
         
