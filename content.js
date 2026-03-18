@@ -109,13 +109,18 @@ async function scrapeDetailPage() {
 function getFullName() {
     const selectors = [
         'h1.text-heading-xlarge',
-        'h1.inline.t-24',
-        '.pv-top-card--list .text-heading-xlarge',
+        '.text-heading-xlarge',
+        '.pv-text-details__left-panel h1',
+        '.pv-top-card-v2-bg-color h1',
+        '.top-card-layout__title',
         'h1'
     ];
     for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el && el.textContent.trim()) return el.textContent.trim();
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+            const text = el.textContent.trim();
+            if (text && text.length > 1) return text;
+        }
     }
     return "Unknown";
 }
@@ -123,12 +128,17 @@ function getFullName() {
 function getHeadline() {
     const selectors = [
         '.text-body-medium.break-words',
-        '.pv-top-card--list .text-body-medium',
-        'div.text-body-medium'
+        '.pv-text-details__left-panel .text-body-medium',
+        '[data-generated-suggestion-target^="urn:li:fsu"] ~ .text-body-medium',
+        'div.text-body-medium',
+        '.top-card-layout__headline'
     ];
     for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el && el.textContent.trim()) return el.textContent.trim();
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+            const text = el.textContent.trim();
+            if (text && text.length > 3) return text;
+        }
     }
     return "N/A";
 }
@@ -142,39 +152,26 @@ function getLocation() {
         if (!text || text.length < 3) return false;
         if (pronouns.test(text.trim())) return false;
         for (const skip of skipWords) {
-            if (text.includes(skip)) return false;
+            if (text.toLowerCase().includes(skip.toLowerCase())) return false;
         }
         return true;
     }
 
-    // Strategy 1: Highly specific LinkedIn selector for location
-    const specificLoc = document.querySelector('.mt2 span.text-body-small.inline.t-black--light.break-words') ||
-                        document.querySelector('.pv-text-details__left-panel span.text-body-small.inline.t-black--light.break-words');
-    if (specificLoc && isValidLocation(specificLoc.textContent.trim())) {
-        return specificLoc.textContent.trim();
-    }
-
-    // Strategy 2: Look in the top left card section (avoiding right side company panels)
-    const leftPanel = document.querySelector('.mt2.relative') || document.querySelector('.pv-text-details__left-panel');
-    if (leftPanel) {
-        const spans = leftPanel.querySelectorAll('span.text-body-small');
-        for (const span of spans) {
-            const text = span.textContent.trim();
-            // Also avoid company names by checking if the span has a button parent
-            if (isValidLocation(text) && !span.closest('button')) return text;
-        }
-    }
-
-    // Strategy 2: Try known selectors
     const selectors = [
-        '.text-body-small.mt2 .text-body-small.inline',
+        '.mt2 span.text-body-small.inline.t-black--light.break-words',
+        '.pv-text-details__left-panel span.text-body-small.inline.t-black--light.break-words',
         '.pv-top-card--list-bullet .text-body-small',
+        'span.text-body-small.inline.t-black--light.break-words',
+        '.text-body-small.inline.t-black--light.break-words',
+        '.top-card__subline-item'
     ];
+
     for (const sel of selectors) {
         const els = document.querySelectorAll(sel);
         for (const el of els) {
             const text = el.textContent.trim();
-            if (isValidLocation(text)) return text;
+            // Also avoid company names by checking if the span has a button parent
+            if (isValidLocation(text) && !el.closest('button')) return text;
         }
     }
 
@@ -183,10 +180,26 @@ function getLocation() {
 
 function getAbout() {
     try {
-        const aboutSection = document.querySelector('#about');
-        if (!aboutSection) return "N/A";
+        let container = null;
+        
+        // 1. Try Anchor Strategy
+        const aboutAnchor = document.querySelector('#about') || document.querySelector('#about-section');
+        if (aboutAnchor) {
+            container = aboutAnchor.closest('section') || aboutAnchor.parentElement?.parentElement;
+        }
 
-        const container = aboutSection.closest('section') || aboutSection.parentElement?.parentElement;
+        // 2. Try Heading text Strategy
+        if (!container) {
+            const sections = document.querySelectorAll('section');
+            for (const sec of sections) {
+                const heading = sec.querySelector('h2');
+                if (heading && heading.textContent.toLowerCase().includes('about')) {
+                    container = sec;
+                    break;
+                }
+            }
+        }
+
         if (!container) return "N/A";
 
         // Click "see more" if present
@@ -198,7 +211,8 @@ function getAbout() {
         // Extract text from hidden span (LinkedIn pattern)
         const textEl = container.querySelector('.pv-shared-text-with-see-more span[aria-hidden="true"]') ||
             container.querySelector('.inline-show-more-text span[aria-hidden="true"]') ||
-            container.querySelector('.pv-shared-text-with-see-more');
+            container.querySelector('.pv-shared-text-with-see-more') ||
+            container.querySelector('.display-flex.ph5.pv3 span[aria-hidden="true"]');
 
         if (textEl) return textEl.textContent.trim();
 
