@@ -105,7 +105,21 @@ async function orchestrateFullScrape(tabId, sheetId, zohoSave, zohoJobId) {
         // Phase 5: Navigate back to profile
         broadcastStatus("🔙 Returning to profile...");
         await navigateTab(tabId, profileUrl);
-        await sleep(2000);
+        await sleep(3000);
+
+        // Phase 5b: Fallback — scrape sections directly from main profile page
+        // for profiles whose /details/ pages are blank
+        if (experienceItems.length === 0 || educationItems.length === 0 || skillsItems.length === 0) {
+            broadcastStatus("🔍 Detail pages empty — scraping from main profile...");
+            try {
+                const fallbackResp = await sendMessageToTab(tabId, { action: "scrape_profile_sections" });
+                if (fallbackResp && fallbackResp.success) {
+                    if (experienceItems.length === 0) experienceItems = fallbackResp.data.experience || [];
+                    if (educationItems.length === 0) educationItems = fallbackResp.data.education || [];
+                    if (skillsItems.length === 0) skillsItems = fallbackResp.data.skills || [];
+                }
+            } catch (e) { /* fallback failed silently */ }
+        }
 
         // Phase 6: Process all data
         broadcastStatus("⚙️ Processing & saving data...");

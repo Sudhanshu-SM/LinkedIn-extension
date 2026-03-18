@@ -41,6 +41,14 @@
             });
             return true; // async
         }
+        else if (request.action === "scrape_profile_sections") {
+            try {
+                const data = scrapeProfileSections();
+                sendResponse({ success: true, data: data });
+            } catch (e) {
+                sendResponse({ success: false, error: e.message, data: {} });
+            }
+        }
         return true;
     });
 
@@ -79,6 +87,46 @@
         const profile_url = getProfileUrl();
 
         return { full_name, headline, location, about, profile_url };
+    }
+
+    // =====================================================
+    // SCRAPE SECTIONS FROM MAIN PROFILE PAGE (fallback)
+    // Used when /details/ pages are blank for some profiles
+    // =====================================================
+    function scrapeProfileSections() {
+        const result = { experience: [], education: [], skills: [] };
+
+        const sectionAnchors = {
+            experience: ['#experience', '#experience-section'],
+            education:  ['#education',  '#education-section'],
+            skills:     ['#skills',     '#skills-section']
+        };
+
+        for (const [key, anchors] of Object.entries(sectionAnchors)) {
+            for (const sel of anchors) {
+                const anchor = document.querySelector(sel);
+                if (!anchor) continue;
+
+                // Walk up to find the containing section card
+                const section = anchor.closest('section') ||
+                                anchor.parentElement?.parentElement?.parentElement;
+                if (!section) continue;
+
+                const items = section.querySelectorAll('.pvs-list__paged-list-item');
+                for (const item of items) {
+                    try {
+                        if (/·\s*(?:1st|2nd|3rd)|degree connection/i.test(item.textContent)) continue;
+                        const text = extractItemText(item);
+                        if (text) result[key].push(text);
+                    } catch (e) { continue; }
+                }
+
+                if (result[key].length > 0) break; // found data, stop trying anchors
+            }
+        }
+
+        log(`Profile sections fallback: exp=${result.experience.length} edu=${result.education.length} skills=${result.skills.length}`);
+        return result;
     }
 
     // =====================================================
