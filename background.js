@@ -583,7 +583,7 @@ async function createZohoCandidate(candidateData) {
         "Skill_Set": candidateData.top_skills || "",
         "LinkedIn_Id": candidateData.profile_url || "",
         "Website": candidateData.profile_url || "",
-        "Current_Location": candidateData.location || ""
+        "City": candidateData.location || ""
     };
 
     // Add structured Experience_Details
