@@ -521,12 +521,24 @@ async function refreshZohoToken() {
     }
 
     const domain = creds.zohoDomain || 'https://accounts.zoho.in';
-    const url = `${domain}/oauth/v2/token?refresh_token=${creds.zohoRefreshToken}&client_id=${creds.zohoClientId}&client_secret=${creds.zohoClientSecret}&grant_type=refresh_token`;
+    const url = `${domain}/oauth/v2/token`;
 
-    const response = await fetch(url, { method: 'POST' });
+    const body = new URLSearchParams({
+        refresh_token: creds.zohoRefreshToken,
+        client_id: creds.zohoClientId,
+        client_secret: creds.zohoClientSecret,
+        grant_type: 'refresh_token'
+    });
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    });
     const data = await response.json();
-    
+
     if (data.error) throw new Error("Zoho Auth Error: " + data.error);
+    if (!data.access_token) throw new Error("Zoho token refresh failed: " + JSON.stringify(data));
     return data.access_token;
 }
 
@@ -563,15 +575,17 @@ async function createZohoCandidate(candidateData) {
     const lastName = nameParts.length > 1 ? nameParts.pop() : "Unknown";
     const firstName = nameParts.join(" ");
 
+    const jobTitle = (candidateData.current_position || candidateData.headline || "").substring(0, 100);
+
     const record = {
         "First_Name": firstName || "Unknown",
         "Last_Name": lastName || "Unknown",
-        "Current_Job_Title": candidateData.current_position || candidateData.headline || "",
+        "Current_Job_Title": jobTitle,
         "Current_Employer": candidateData.current_company || "",
         "Skill_Set": candidateData.top_skills || "",
-        "Linkedin": candidateData.profile_url || "",
+        "LinkedIn_Id": candidateData.profile_url || "",
         "Website": candidateData.profile_url || "",
-        "City": candidateData.location || ""
+        "Current_Location": candidateData.location || ""
     };
 
     // Add structured Experience_Details
@@ -645,12 +659,8 @@ async function associateZohoCandidate(candidateId, jobOpeningId) {
     const url = `${apiDomain}/recruit/v2/Candidates/actions/associate`;
 
     const body = {
-        "data": [
-            {
-                "jobids": [jobOpeningId],
-                "ids": [candidateId]
-            }
-        ]
+        "ids": [candidateId],
+        "jobids": [jobOpeningId]
     };
 
     const response = await fetch(url, {
