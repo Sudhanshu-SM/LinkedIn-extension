@@ -87,12 +87,20 @@ async function scrapeDetailPage() {
     // Gentle scroll to load lazy items
     await gentleScroll();
 
-    // Extract items from PVS list
-    const items = document.querySelectorAll('.pvs-list__paged-list-item');
+    // Scope to <main> only — excludes sidebar/footer "People You May Know" cards
+    // which share the same .pvs-list__paged-list-item class
+    const mainContent = document.querySelector('main') ||
+                        document.querySelector('.scaffold-layout__main') ||
+                        document.body;
+
+    const items = mainContent.querySelectorAll('.pvs-list__paged-list-item');
     const data = [];
 
     for (const item of items) {
         try {
+            // Skip LinkedIn connection suggestion cards (· 1st / · 2nd / · 3rd / "degree connection")
+            if (/·\s*(?:1st|2nd|3rd)|degree connection/i.test(item.textContent)) continue;
+
             const text = extractItemText(item);
             if (text) data.push(text);
         } catch (e) { continue; }
