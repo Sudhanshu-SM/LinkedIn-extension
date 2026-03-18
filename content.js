@@ -89,7 +89,7 @@
         log("Scraping detail page: " + window.location.href);
 
         // Wait for content to render
-        await delay(1500);
+        await delay(2000);
 
         // Gentle scroll to load lazy items
         await gentleScroll();
@@ -100,7 +100,17 @@
                             document.querySelector('.scaffold-layout__main') ||
                             document.body;
 
-        const items = mainContent.querySelectorAll('.pvs-list__paged-list-item');
+        // Try primary selector first; fall back to broader selectors if empty
+        let items = mainContent.querySelectorAll('.pvs-list__paged-list-item');
+        if (items.length === 0) {
+            // Wait a bit more — SPA may still be rendering
+            await delay(2000);
+            items = mainContent.querySelectorAll(
+                '.pvs-list__paged-list-item, li.artdeco-list__item, ' +
+                'li.pvs-list__item--line-separated, .pvs-list__item--with-top-padding'
+            );
+        }
+
         const data = [];
 
         for (const item of items) {
