@@ -105,7 +105,21 @@ async function orchestrateFullScrape(tabId, sheetId, zohoSave, zohoJobId) {
         // Phase 5: Navigate back to profile
         broadcastStatus("🔙 Returning to profile...");
         await navigateTab(tabId, profileUrl);
-        await sleep(2000);
+        await sleep(3000);
+
+        // Phase 5b: Fallback — scrape sections directly from main profile page
+        // for profiles whose /details/ pages are blank
+        if (experienceItems.length === 0 || educationItems.length === 0 || skillsItems.length === 0) {
+            broadcastStatus("🔍 Detail pages empty — scraping from main profile...");
+            try {
+                const fallbackResp = await sendMessageToTab(tabId, { action: "scrape_profile_sections" });
+                if (fallbackResp && fallbackResp.success) {
+                    if (experienceItems.length === 0) experienceItems = fallbackResp.data.experience || [];
+                    if (educationItems.length === 0) educationItems = fallbackResp.data.education || [];
+                    if (skillsItems.length === 0) skillsItems = fallbackResp.data.skills || [];
+                }
+            } catch (e) { /* fallback failed silently */ }
+        }
 
         // Phase 6: Process all data
         broadcastStatus("⚙️ Processing & saving data...");
@@ -497,9 +511,7 @@ function randomDelay(min, max) {
 }
 
 function broadcastStatus(message) {
-    try {
-        chrome.runtime.sendMessage({ action: "scrape_status", message: message });
-    } catch (e) { }
+    chrome.runtime.sendMessage({ action: "scrape_status", message: message }).catch(() => {});
 }
 
 // =====================================================
@@ -521,12 +533,24 @@ async function refreshZohoToken() {
     }
 
     const domain = creds.zohoDomain || 'https://accounts.zoho.in';
-    const url = `${domain}/oauth/v2/token?refresh_token=${creds.zohoRefreshToken}&client_id=${creds.zohoClientId}&client_secret=${creds.zohoClientSecret}&grant_type=refresh_token`;
+    const url = `${domain}/oauth/v2/token`;
 
-    const response = await fetch(url, { method: 'POST' });
+    const body = new URLSearchParams({
+        refresh_token: creds.zohoRefreshToken,
+        client_id: creds.zohoClientId,
+        client_secret: creds.zohoClientSecret,
+        grant_type: 'refresh_token'
+    });
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    });
     const data = await response.json();
-    
+
     if (data.error) throw new Error("Zoho Auth Error: " + data.error);
+    if (!data.access_token) throw new Error("Zoho token refresh failed: " + JSON.stringify(data));
     return data.access_token;
 }
 
@@ -563,13 +587,15 @@ async function createZohoCandidate(candidateData) {
     const lastName = nameParts.length > 1 ? nameParts.pop() : "Unknown";
     const firstName = nameParts.join(" ");
 
+    const jobTitle = (candidateData.current_position || candidateData.headline || "").substring(0, 100);
+
     const record = {
         "First_Name": firstName || "Unknown",
         "Last_Name": lastName || "Unknown",
-        "Current_Job_Title": candidateData.current_position || candidateData.headline || "",
+        "Current_Job_Title": jobTitle,
         "Current_Employer": candidateData.current_company || "",
         "Skill_Set": candidateData.top_skills || "",
-        "Linkedin": candidateData.profile_url || "",
+        "LinkedIn_Id": candidateData.profile_url || "",
         "Website": candidateData.profile_url || "",
         "City": candidateData.location || ""
     };
@@ -606,9 +632,9 @@ async function createZohoCandidate(candidateData) {
             }
 
             expDetails.push({
-                "Occupation_Title": title || "Unknown",
-                "Company": company || "Unknown",
-                "Summary": dates ? `[${dates}]\n${item}` : item
+                "Occupation_Title": (title || "Unknown").substring(0, 255),
+                "Company": (company || "Unknown").substring(0, 255),
+                "Summary": (dates ? `[${dates}]\n${item}` : item).substring(0, 32000)
             });
         }
         
@@ -647,8 +673,8 @@ async function associateZohoCandidate(candidateId, jobOpeningId) {
     const body = {
         "data": [
             {
-                "jobids": [jobOpeningId],
-                "ids": [candidateId]
+                "ids": [candidateId],
+                "jobids": [jobOpeningId]
             }
         ]
     };
